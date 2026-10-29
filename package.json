@@ -1,0 +1,15 @@
+{
+  "name": "laptop-equalizer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Windows desktop equalizer for shared playback audio",
+  "scripts": {
+    "start": "python laptop_equalizer.py",
+    "test": "python -m unittest discover -s tests -v",
+    "build": "python -m PyInstaller --noconfirm --clean \"Laptop Equalizer.spec\"",
+    "verify-build": "npm test && npm run build"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
