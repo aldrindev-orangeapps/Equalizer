@@ -11,6 +11,7 @@ recording devices are not managed by this application.
 - Built-in Flat, Bass Boost, Deep Bass, Vocal, Gaming, Movies, and Treble Boost presets
 - Custom presets stored locally
 - Optional automatic headroom to reduce digital clipping
+- Live 48-band RGB spectrum analyzer using Windows WASAPI loopback
 - Instant enable/bypass without changing the Windows master volume
 - Safe integration that preserves the existing Equalizer APO configuration
 - Output-device selector provided by Equalizer APO
@@ -21,6 +22,12 @@ recording devices are not managed by this application.
 - Windows 10 or Windows 11
 - Equalizer APO installed and enabled for the desired speaker/headphone device
 - Python 3.10 or newer when running from source
+
+Install the analyzer dependencies once when running from source:
+
+```powershell
+npm run setup
+```
 
 Equalizer APO performs the audio processing. Laptop Equalizer is the friendly
 control interface and does not install an audio driver of its own.

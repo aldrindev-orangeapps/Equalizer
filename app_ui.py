@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import colorsys
 import subprocess
 import tkinter as tk
 import webbrowser
 from pathlib import Path
 from tkinter import messagebox, simpledialog, ttk
 
+from audio_analyzer import PlaybackAnalyzer
 from equalizer_backend import (
     EqualizerApoBackend,
     EqualizerError,
@@ -20,19 +22,20 @@ from settings_store import DEFAULT_PRESETS, SettingsStore, preset_state
 
 
 COLORS = {
-    "bg": "#F4F6FA",
-    "surface": "#FFFFFF",
-    "sidebar": "#111827",
-    "sidebar_panel": "#1F2937",
-    "primary": "#6750E8",
-    "primary_dark": "#513BCB",
-    "text": "#172033",
-    "muted": "#697386",
-    "border": "#DDE2EA",
-    "success": "#087A55",
-    "warning": "#B45309",
-    "danger": "#C0362C",
-    "track": "#E7EAF0",
+    "bg": "#080B14",
+    "surface": "#101625",
+    "surface_alt": "#151D30",
+    "sidebar": "#0B1020",
+    "sidebar_panel": "#151D31",
+    "primary": "#7C5CFF",
+    "primary_dark": "#6546E8",
+    "text": "#F4F6FF",
+    "muted": "#8F9BB3",
+    "border": "#263149",
+    "success": "#35E0A1",
+    "warning": "#FFB84D",
+    "danger": "#FF6680",
+    "track": "#222B3E",
 }
 
 
@@ -44,8 +47,8 @@ class LaptopEqualizerApp:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         root.title("Laptop Equalizer")
-        root.geometry("1180x720")
-        root.minsize(1000, 650)
+        root.geometry("1240x840")
+        root.minsize(1040, 740)
         root.configure(bg=COLORS["bg"])
 
         self.store = SettingsStore()
@@ -60,11 +63,15 @@ class LaptopEqualizerApp:
         self.status_var = tk.StringVar()
         self.headroom_var = tk.StringVar()
         self._loading_values = False
+        self.analyzer = PlaybackAnalyzer()
+        self._analyzer_phase = 0.0
 
         self._configure_styles()
         self._build_layout()
         self._refresh_backend_status()
         self._update_readouts()
+        self.analyzer.start()
+        self.root.after(40, self._render_analyzer)
         root.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _configure_styles(self) -> None:
@@ -75,7 +82,7 @@ class LaptopEqualizerApp:
         style.configure("Surface.TFrame", background=COLORS["surface"])
         style.configure("Sidebar.TFrame", background=COLORS["sidebar"])
         style.configure("TLabel", background=COLORS["bg"], foreground=COLORS["text"], font=("Segoe UI", 9))
-        style.configure("Title.TLabel", font=("Segoe UI Semibold", 24), foreground=COLORS["text"])
+        style.configure("Title.TLabel", font=("Segoe UI Semibold", 25), foreground=COLORS["text"])
         style.configure("Subtitle.TLabel", font=("Segoe UI", 10), foreground=COLORS["muted"])
         style.configure("CardTitle.TLabel", background=COLORS["surface"], font=("Segoe UI Semibold", 12), foreground=COLORS["text"])
         style.configure("CardText.TLabel", background=COLORS["surface"], font=("Segoe UI", 9), foreground=COLORS["muted"])
@@ -83,13 +90,13 @@ class LaptopEqualizerApp:
         style.configure("SidebarTitle.TLabel", background=COLORS["sidebar"], foreground="white", font=("Segoe UI Semibold", 17))
         style.configure("SidebarText.TLabel", background=COLORS["sidebar"], foreground="#AEB7C6", font=("Segoe UI", 9))
         style.configure("SidebarStatus.TLabel", background=COLORS["sidebar_panel"], foreground="#DDE4EE", font=("Segoe UI", 9), padding=10)
-        style.configure("Primary.TButton", background=COLORS["primary"], foreground="white", borderwidth=0, padding=(15, 10), font=("Segoe UI Semibold", 9))
+        style.configure("Primary.TButton", background=COLORS["primary"], foreground="white", borderwidth=0, padding=(15, 11), font=("Segoe UI Semibold", 9))
         style.map("Primary.TButton", background=[("active", COLORS["primary_dark"]), ("pressed", "#432DBA")])
-        style.configure("Secondary.TButton", background=COLORS["surface"], foreground=COLORS["text"], bordercolor=COLORS["border"], borderwidth=1, padding=(12, 8), font=("Segoe UI Semibold", 9))
-        style.map("Secondary.TButton", background=[("active", "#F0F2F6")])
+        style.configure("Secondary.TButton", background=COLORS["surface_alt"], foreground=COLORS["text"], bordercolor=COLORS["border"], borderwidth=1, padding=(12, 8), font=("Segoe UI Semibold", 9))
+        style.map("Secondary.TButton", background=[("active", "#202A42")])
         style.configure("Sidebar.TButton", background=COLORS["sidebar_panel"], foreground="#E5EAF2", bordercolor="#344155", borderwidth=1, padding=(12, 9), font=("Segoe UI Semibold", 9))
         style.map("Sidebar.TButton", background=[("active", "#2A374A")])
-        style.configure("TCombobox", padding=(8, 7), fieldbackground="white", bordercolor=COLORS["border"])
+        style.configure("TCombobox", padding=(8, 7), fieldbackground=COLORS["surface_alt"], background=COLORS["surface_alt"], foreground=COLORS["text"], bordercolor=COLORS["border"], arrowcolor=COLORS["muted"])
         style.configure("TCheckbutton", background=COLORS["surface"], foreground=COLORS["text"], font=("Segoe UI", 9))
         style.map("TCheckbutton", background=[("active", COLORS["surface"])])
 
@@ -119,12 +126,21 @@ class LaptopEqualizerApp:
         content = ttk.Frame(self.root, padding=(30, 25))
         content.grid(row=0, column=1, sticky="nsew")
         content.columnconfigure(0, weight=1)
-        content.rowconfigure(2, weight=1)
-        ttk.Label(content, text="Shape your laptop sound", style="Title.TLabel").grid(row=0, column=0, sticky="w")
-        ttk.Label(content, text="The same profile applies to YouTube, browsers, Spotify, games, and other playback apps.", style="Subtitle.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 20))
+        content.rowconfigure(3, weight=1)
+        ttk.Label(content, text="Shape your sound", style="Title.TLabel").grid(row=0, column=0, sticky="w")
+        ttk.Label(content, text="Live system spectrum · one profile for every playback app", style="Subtitle.TLabel").grid(row=1, column=0, sticky="w", pady=(4, 16))
+
+        analyzer_frame = ttk.Frame(content, style="Surface.TFrame", padding=(14, 10))
+        analyzer_frame.grid(row=2, column=0, sticky="ew", pady=(0, 14))
+        analyzer_frame.columnconfigure(0, weight=1)
+        self.analyzer_canvas = tk.Canvas(
+            analyzer_frame, height=125, background=COLORS["surface"],
+            highlightthickness=0, borderwidth=0,
+        )
+        self.analyzer_canvas.grid(row=0, column=0, sticky="ew")
 
         card = ttk.Frame(content, style="Surface.TFrame", padding=(22, 20))
-        card.grid(row=2, column=0, sticky="nsew")
+        card.grid(row=3, column=0, sticky="nsew")
         card.columnconfigure(tuple(range(11)), weight=1)
         card.rowconfigure(2, weight=1)
 
@@ -168,11 +184,53 @@ class LaptopEqualizerApp:
     def _make_scale(self, parent: ttk.Frame, variable: tk.DoubleVar, minimum: float, maximum: float) -> tk.Scale:
         return tk.Scale(
             parent, variable=variable, from_=maximum, to=minimum, resolution=0.5,
-            orient="vertical", showvalue=False, length=285, width=11, sliderlength=19,
+            orient="vertical", showvalue=False, length=235, width=11, sliderlength=19,
             bg=COLORS["surface"], activebackground=COLORS["primary"],
             troughcolor=COLORS["track"], highlightthickness=0, borderwidth=0,
             command=lambda _value: self._values_changed(),
         )
+
+    @staticmethod
+    def _rgb_color(position: float, brightness: float = 1.0) -> str:
+        red, green, blue = colorsys.hsv_to_rgb(position % 1.0, 0.78, brightness)
+        return f"#{int(red * 255):02x}{int(green * 255):02x}{int(blue * 255):02x}"
+
+    def _render_analyzer(self) -> None:
+        if not self.root.winfo_exists():
+            return
+        canvas = self.analyzer_canvas
+        width = max(canvas.winfo_width(), 400)
+        height = max(canvas.winfo_height(), 120)
+        snapshot = self.analyzer.snapshot()
+        canvas.delete("all")
+
+        # Quiet horizontal guides keep the analyzer readable without visual noise.
+        for ratio in (0.25, 0.5, 0.75):
+            y = height - 14 - (height - 36) * ratio
+            canvas.create_line(10, y, width - 10, y, fill="#1C2538", width=1)
+
+        levels = snapshot.levels
+        gap = 3.0
+        usable_width = width - 20
+        bar_width = max(2.0, (usable_width - gap * (len(levels) - 1)) / len(levels))
+        baseline = height - 12
+        maximum_height = height - 37
+        self._analyzer_phase = (self._analyzer_phase + 0.0025) % 1.0
+        for index, level in enumerate(levels):
+            x1 = 10 + index * (bar_width + gap)
+            x2 = x1 + bar_width
+            bar_height = max(2.0, maximum_height * level)
+            y1 = baseline - bar_height
+            hue = self._analyzer_phase + index / max(1, len(levels)) * 0.76
+            glow = self._rgb_color(hue, 0.28)
+            bright = self._rgb_color(hue, 0.98)
+            canvas.create_rectangle(x1, y1 - 3, x2, baseline, fill=glow, outline="")
+            canvas.create_rectangle(x1, y1, x2, baseline, fill=bright, outline="")
+
+        canvas.create_text(12, 10, anchor="nw", text="LIVE PLAYBACK ANALYZER", fill=COLORS["text"], font=("Segoe UI Semibold", 9))
+        state_text = snapshot.status if snapshot.active else snapshot.status
+        canvas.create_text(width - 12, 10, anchor="ne", text=state_text, fill=COLORS["success"] if snapshot.active else COLORS["muted"], font=("Segoe UI", 8))
+        self.root.after(33, self._render_analyzer)
 
     def _current_state(self) -> EqualizerState:
         return EqualizerState(
@@ -306,6 +364,7 @@ class LaptopEqualizerApp:
             self.status_var.set("Equalizer APO detected. Complete the one-time setup.")
 
     def _on_close(self) -> None:
+        self.analyzer.stop()
         try:
             self.store.save(self._current_state(), self.custom_presets)
         except OSError:

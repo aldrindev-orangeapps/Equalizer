@@ -4,9 +4,10 @@
   "private": true,
   "description": "Windows desktop equalizer for shared playback audio",
   "scripts": {
+    "setup": "python -m pip install -r requirements.txt",
     "start": "python laptop_equalizer.py",
     "test": "python -m unittest discover -s tests -v",
-    "build": "python -m PyInstaller --noconfirm --clean \"Laptop Equalizer.spec\"",
+    "build": "python -m pip install -r requirements.txt && python -m PyInstaller --noconfirm --clean \"Laptop Equalizer.spec\"",
     "verify-build": "npm test && npm run build"
   },
   "engines": {
